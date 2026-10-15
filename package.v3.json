@@ -14,5 +14,19 @@
       "v3.1.0": "改造数据源：爱奇艺/腾讯视频/芒果TV片库「最新」电视剧自动订阅，支持平台选择、排重与历史记录。",
       "v3.0.0": "基于 thsrite v3.0.0 适配 V3 SDK、统一媒体身份、统计读取与订阅历史。"
     }
+  },
+  "AutoSignIn": {
+    "name": "站点自动签到",
+    "description": "自动模拟登录、签到站点。本仓为私有再分发：源包取自 jxxghp/MoviePilot-Plugins 的 AutoSignIn_v2.9.13 Release，仅放宽 system_version 门槛，代码未改动。",
+    "labels": "站点",
+    "version": "2.9.13",
+    "icon": "",
+    "author": "thsrite (redistributed by pronii)",
+    "level": 1,
+    "release": true,
+    "system_version": ">=3.0.0",
+    "history": {
+      "v2.9.13": "原版 2.9.13（上游市场新版 3.0.0 要求 MoviePilot >=3.1.6，本机 3.1.5 无法安装，故在本仓提供可运行的 2.9.13）。"
+    }
   }
 }
