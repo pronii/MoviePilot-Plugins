@@ -1,0 +1,17 @@
+{
+  "PopularSubscribe": {
+    "name": "热门媒体订阅",
+    "description": "自动添加热门电视剧到订阅；数据源改为爱奇艺/腾讯视频/芒果TV片库最新剧集（基于 thsrite v3.0.0 本地魔改版）。",
+    "labels": "订阅",
+    "version": "3.1.0",
+    "icon": "https://raw.githubusercontent.com/thsrite/MoviePilot-Plugins/main/icons/popular.png",
+    "author": "pronii (based on thsrite)",
+    "level": 1,
+    "release": true,
+    "system_version": ">=3.0.0",
+    "history": {
+      "v3.1.0": "改造数据源：爱奇艺/腾讯视频/芒果TV片库「最新」电视剧自动订阅，支持平台选择、排重与历史记录。",
+      "v3.0.0": "基于 thsrite v3.0.0 适配 V3 SDK、统一媒体身份、统计读取与订阅历史。"
+    }
+  }
+}
