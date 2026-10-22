@@ -1,15 +1,16 @@
 {
   "PopularSubscribe": {
     "name": "热门媒体订阅",
-    "description": "自动添加热门电视剧到订阅；数据源为爱奇艺/腾讯视频/芒果TV片库最新剧集 + Netflix 新剧 + 韩剧（后两者走 TMDB discover）。基于 thsrite v3.0.0 本地魔改版。",
+    "description": "自动添加新剧到订阅；数据源：爱奇艺/腾讯视频/芒果TV片库最新剧集 + Netflix 新剧 + 韩剧 + 欧美剧（后三者走 TMDB discover）。基于 thsrite v3.0.0 本地魔改版。",
     "labels": "订阅",
-    "version": "3.2.2",
+    "version": "3.3.0",
     "icon": "https://raw.githubusercontent.com/thsrite/MoviePilot-Plugins/main/icons/popular.png",
     "author": "pronii (based on thsrite)",
     "level": 1,
     "release": true,
     "system_version": ">=3.0.0",
     "history": {
+      "v3.3.0": "新增欧美剧订阅（TMDB discover：美/英/加/澳/新/爱 出品，排除动画、少儿、真人秀、脱口秀、新闻）。",
       "v3.2.2": "补全 get_config() 中的 Netflix/韩剧配置项（此前会导致开关被配置保存流程覆盖丢失）。",
       "v3.2.1": "修复 SDK MediaInfo 不支持 title_year 导致 Netflix/韩剧拉取中断的问题。",
       "v3.2.0": "新增 Netflix 新剧与韩剧订阅（TMDB discover，首播日期限定上月1日~今天，排除真人秀/脱口秀/新闻）。",

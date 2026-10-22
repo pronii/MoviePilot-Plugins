@@ -35,7 +35,7 @@ class PopularSubscribe(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/thsrite/MoviePilot-Plugins/main/icons/popular.png"
     # 插件版本
-    plugin_version = "3.2.2"
+    plugin_version = "3.3.0"
     # 插件作者
     plugin_author = "thsrite"
     # 作者主页
@@ -103,9 +103,15 @@ class PopularSubscribe(_PluginBase):
             "name": "韩剧",
             "detail_link": "https://www.themoviedb.org/tv/{media_id}",
         },
+        "western": {
+            "name": "欧美剧",
+            "detail_link": "https://www.themoviedb.org/tv/{media_id}",
+        },
     }
     # 直接走 TMDB discover 的数据源（无需额外的探索插件）
-    _TMDB_SOURCES: Tuple[str, ...] = ("netflix", "korean")
+    _TMDB_SOURCES: Tuple[str, ...] = ("netflix", "korean", "western")
+    # 欧美剧取这些出品国
+    _TMDB_WESTERN_COUNTRIES = "US|GB|CA|AU|NZ|IE"
     # Netflix 在 TMDB 的网络 ID
     _TMDB_NETFLIX_NETWORK = "213"
     # 平台开关（爱奇艺 / 腾讯视频 / 芒果TV）
@@ -127,6 +133,10 @@ class PopularSubscribe(_PluginBase):
     _korean_cron: str = ""
     _netflix_page_cnt: int = 20
     _korean_page_cnt: int = 20
+    # 欧美剧（数据源为 TMDB discover）
+    _western_enabled: bool = False
+    _western_cron: str = ""
+    _western_page_cnt: int = 20
     # 平台订阅过滤：只订上个月以后首播的新剧 / 只订能识别到 TMDB 的剧（过滤短剧）
     _platform_recent_only: bool = True
     _platform_require_tmdb: bool = True
@@ -185,6 +195,9 @@ class PopularSubscribe(_PluginBase):
         self._korean_cron = config.get("korean_cron") or ""
         self._netflix_page_cnt = self.__to_int(config.get("netflix_page_cnt"), 20)
         self._korean_page_cnt = self.__to_int(config.get("korean_page_cnt"), 20)
+        self._western_enabled = bool(config.get("western_enabled"))
+        self._western_cron = config.get("western_cron") or ""
+        self._western_page_cnt = self.__to_int(config.get("western_page_cnt"), 20)
         self._platform_recent_only = bool(config.get("platform_recent_only", True))
         self._platform_require_tmdb = bool(config.get("platform_require_tmdb", True))
         # 新剧过滤起始日期：上个月1日（每次运行时重新计算，随时间自动前移）
@@ -318,6 +331,8 @@ class PopularSubscribe(_PluginBase):
              self._netflix_enabled, self._netflix_cron, self._netflix_page_cnt),
             ("PopularSubscribeKorean", "韩剧新剧订阅", "korean",
              self._korean_enabled, self._korean_cron, self._korean_page_cnt),
+            ("PopularSubscribeWestern", "欧美剧新剧订阅", "western",
+             self._western_enabled, self._western_cron, self._western_page_cnt),
         )
         for sid, name, platform, enabled, cron, page_cnt in platform_settings:
             if not (enabled and cron):
@@ -399,6 +414,9 @@ class PopularSubscribe(_PluginBase):
             "korean_cron": self._korean_cron,
             "netflix_page_cnt": self._netflix_page_cnt,
             "korean_page_cnt": self._korean_page_cnt,
+            "western_enabled": self._western_enabled,
+            "western_cron": self._western_cron,
+            "western_page_cnt": self._western_page_cnt,
             "platform_recent_only": self._platform_recent_only,
             "platform_require_tmdb": self._platform_require_tmdb,
         })
@@ -614,6 +632,7 @@ class PopularSubscribe(_PluginBase):
             ("mangguo", self._mangguo_enabled, self._mangguo_page_cnt),
             ("netflix", self._netflix_enabled, self._netflix_page_cnt),
             ("korean", self._korean_enabled, self._korean_page_cnt),
+            ("western", self._western_enabled, self._western_page_cnt),
         ):
             if enabled:
                 logger.info(f"{self._PLATFORMS[platform]['name']}最新电视剧订阅：立即运行一次")
@@ -694,7 +713,8 @@ class PopularSubscribe(_PluginBase):
 
         - Netflix：with_networks=213（Netflix 自制网络）
         - 韩剧：with_origin_country=KR
-        两者都按首播日期倒序，并用「上个月1日」作为首播日期下限。
+        - 欧美剧：with_origin_country=US|GB|CA|AU|NZ|IE，并排除动画/少儿
+        三者都按首播日期倒序，并用「上个月1日」作为首播日期下限。
         返回的条目本身已是 TMDB 身份，无需再做标题识别。
         """
         platform_name = self._PLATFORMS.get(platform, {}).get("name", platform)
@@ -720,8 +740,12 @@ class PopularSubscribe(_PluginBase):
             pass
         if platform == "netflix":
             params["with_networks"] = self._TMDB_NETFLIX_NETWORK
-        else:
+        elif platform == "korean":
             params["with_origin_country"] = "KR"
+        else:
+            # 欧美剧：多个出品国任一命中；额外排除动画/少儿
+            params["with_origin_country"] = self._TMDB_WESTERN_COUNTRIES
+            params["without_genres"] = "16,10762,10764,10767,10763"
 
         logger.info(f"{platform_name}：通过 TMDB discover 拉取最新剧集 {params}")
         try:
@@ -1239,6 +1263,11 @@ class PopularSubscribe(_PluginBase):
                         cron_key="korean_cron", cron_label="韩剧订阅周期",
                         page_key="korean_page_cnt", page_label="韩剧获取条数",
                     ),
+                    self.__form_row_for_platform(
+                        enabled_key="western_enabled", enabled_label="欧美剧新剧（TMDB）",
+                        cron_key="western_cron", cron_label="欧美剧订阅周期",
+                        page_key="western_page_cnt", page_label="欧美剧获取条数",
+                    ),
                     {
                         "component": "VRow",
                         "content": [
@@ -1423,6 +1452,9 @@ class PopularSubscribe(_PluginBase):
             "korean_cron": "10 3 * * *",
             "netflix_page_cnt": 20,
             "korean_page_cnt": 20,
+            "western_enabled": False,
+            "western_cron": "20 3 * * *",
+            "western_page_cnt": 20,
             "platform_recent_only": True,
             "platform_require_tmdb": True,
         }
