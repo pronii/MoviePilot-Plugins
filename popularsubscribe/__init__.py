@@ -24,7 +24,8 @@ class PopularSubscribe(_PluginBase):
     """
     热门媒体订阅：按热度自动订阅电影、电视剧、动漫。
     数据来源于 MoviePilot 服务端的订阅统计接口，需在系统设置中开启订阅统计共享；
-    同时支持爱奇艺 / 腾讯视频 / 芒果TV 最新电视剧订阅（复用平台探索插件拉取片库）。
+    同时支持爱奇艺 / 腾讯视频 / 芒果TV 最新电视剧订阅（复用平台探索插件拉取片库），
+    以及 Netflix 新剧、韩剧订阅（直接走 TMDB discover，只取已开播且首播不早于上月1日的剧集）。
     """
 
     # 插件名称
@@ -34,7 +35,7 @@ class PopularSubscribe(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/thsrite/MoviePilot-Plugins/main/icons/popular.png"
     # 插件版本
-    plugin_version = "3.1.1"
+    plugin_version = "3.2.2"
     # 插件作者
     plugin_author = "thsrite"
     # 作者主页
@@ -94,7 +95,19 @@ class PopularSubscribe(_PluginBase):
             "name": "芒果TV",
             "detail_link": "https://www.mgtv.com/b/{media_id}/",
         },
+        "netflix": {
+            "name": "Netflix",
+            "detail_link": "https://www.themoviedb.org/tv/{media_id}",
+        },
+        "korean": {
+            "name": "韩剧",
+            "detail_link": "https://www.themoviedb.org/tv/{media_id}",
+        },
     }
+    # 直接走 TMDB discover 的数据源（无需额外的探索插件）
+    _TMDB_SOURCES: Tuple[str, ...] = ("netflix", "korean")
+    # Netflix 在 TMDB 的网络 ID
+    _TMDB_NETFLIX_NETWORK = "213"
     # 平台开关（爱奇艺 / 腾讯视频 / 芒果TV）
     _iqiyi_enabled: bool = False
     _tencent_enabled: bool = False
@@ -107,6 +120,13 @@ class PopularSubscribe(_PluginBase):
     _iqiyi_page_cnt: int = 10
     _tencent_page_cnt: int = 10
     _mangguo_page_cnt: int = 10
+    # Netflix / 韩剧（数据源为 TMDB discover）
+    _netflix_enabled: bool = False
+    _korean_enabled: bool = False
+    _netflix_cron: str = ""
+    _korean_cron: str = ""
+    _netflix_page_cnt: int = 20
+    _korean_page_cnt: int = 20
     # 平台订阅过滤：只订上个月以后首播的新剧 / 只订能识别到 TMDB 的剧（过滤短剧）
     _platform_recent_only: bool = True
     _platform_require_tmdb: bool = True
@@ -159,6 +179,12 @@ class PopularSubscribe(_PluginBase):
         self._iqiyi_page_cnt = self.__to_int(config.get("iqiyi_page_cnt"), 10)
         self._tencent_page_cnt = self.__to_int(config.get("tencent_page_cnt"), 10)
         self._mangguo_page_cnt = self.__to_int(config.get("mangguo_page_cnt"), 10)
+        self._netflix_enabled = bool(config.get("netflix_enabled"))
+        self._korean_enabled = bool(config.get("korean_enabled"))
+        self._netflix_cron = config.get("netflix_cron") or ""
+        self._korean_cron = config.get("korean_cron") or ""
+        self._netflix_page_cnt = self.__to_int(config.get("netflix_page_cnt"), 20)
+        self._korean_page_cnt = self.__to_int(config.get("korean_page_cnt"), 20)
         self._platform_recent_only = bool(config.get("platform_recent_only", True))
         self._platform_require_tmdb = bool(config.get("platform_require_tmdb", True))
         # 新剧过滤起始日期：上个月1日（每次运行时重新计算，随时间自动前移）
@@ -288,6 +314,10 @@ class PopularSubscribe(_PluginBase):
              self._tencent_enabled, self._tencent_cron, self._tencent_page_cnt),
             ("PopularSubscribeMangguo", "芒果TV最新电视剧订阅", "mangguo",
              self._mangguo_enabled, self._mangguo_cron, self._mangguo_page_cnt),
+            ("PopularSubscribeNetflix", "Netflix新剧订阅", "netflix",
+             self._netflix_enabled, self._netflix_cron, self._netflix_page_cnt),
+            ("PopularSubscribeKorean", "韩剧新剧订阅", "korean",
+             self._korean_enabled, self._korean_cron, self._korean_page_cnt),
         )
         for sid, name, platform, enabled, cron, page_cnt in platform_settings:
             if not (enabled and cron):
@@ -363,6 +393,12 @@ class PopularSubscribe(_PluginBase):
             "iqiyi_page_cnt": self._iqiyi_page_cnt,
             "tencent_page_cnt": self._tencent_page_cnt,
             "mangguo_page_cnt": self._mangguo_page_cnt,
+            "netflix_enabled": self._netflix_enabled,
+            "korean_enabled": self._korean_enabled,
+            "netflix_cron": self._netflix_cron,
+            "korean_cron": self._korean_cron,
+            "netflix_page_cnt": self._netflix_page_cnt,
+            "korean_page_cnt": self._korean_page_cnt,
             "platform_recent_only": self._platform_recent_only,
             "platform_require_tmdb": self._platform_require_tmdb,
         })
@@ -576,6 +612,8 @@ class PopularSubscribe(_PluginBase):
             ("iqiyi", self._iqiyi_enabled, self._iqiyi_page_cnt),
             ("tencent", self._tencent_enabled, self._tencent_page_cnt),
             ("mangguo", self._mangguo_enabled, self._mangguo_page_cnt),
+            ("netflix", self._netflix_enabled, self._netflix_page_cnt),
+            ("korean", self._korean_enabled, self._korean_page_cnt),
         ):
             if enabled:
                 logger.info(f"{self._PLATFORMS[platform]['name']}最新电视剧订阅：立即运行一次")
@@ -598,6 +636,9 @@ class PopularSubscribe(_PluginBase):
         """
         page_cnt = max(self.__to_int(page_cnt, 10), 1)
         platform_name = self._PLATFORMS.get(platform, {}).get("name", platform)
+        # Netflix / 韩剧：直接走 TMDB discover，不依赖额外的探索插件
+        if platform in self._TMDB_SOURCES:
+            return self.__fetch_tmdb_media(platform=platform, page_cnt=page_cnt)
         try:
             if platform == "iqiyi":
                 # 延迟导入：平台探索插件可能未安装，避免影响插件自身加载
@@ -647,6 +688,80 @@ class PopularSubscribe(_PluginBase):
         # 统一收敛为带标题的媒体对象
         return [media for media in data if media and getattr(media, "title", None)]
 
+    def __fetch_tmdb_media(self, platform: str, page_cnt: int) -> List[Any]:
+        """
+        通过 TMDB discover 拉取 Netflix 新剧 / 韩剧。
+
+        - Netflix：with_networks=213（Netflix 自制网络）
+        - 韩剧：with_origin_country=KR
+        两者都按首播日期倒序，并用「上个月1日」作为首播日期下限。
+        返回的条目本身已是 TMDB 身份，无需再做标题识别。
+        """
+        platform_name = self._PLATFORMS.get(platform, {}).get("name", platform)
+        try:
+            from app.modules.themoviedb.tmdbapi import TmdbApi
+        except ImportError as err:
+            logger.error(f"拉取{platform_name}新剧失败：TMDB 模块不可用（{err}）")
+            return []
+
+        params: Dict[str, Any] = {
+            "sort_by": "first_air_date.desc",
+            "page": 1,
+            "include_adult": "false",
+            # 排除真人秀 / 脱口秀 / 新闻，避免订阅到综艺
+            "without_genres": "10764,10767,10763",
+        }
+        if self._recent_since:
+            params["first_air_date.gte"] = self._recent_since.strftime("%Y-%m-%d")
+        # 只取已经开播的（排除尚未上线的未来剧集）
+        try:
+            params["first_air_date.lte"] = datetime.now().strftime("%Y-%m-%d")
+        except Exception:
+            pass
+        if platform == "netflix":
+            params["with_networks"] = self._TMDB_NETFLIX_NETWORK
+        else:
+            params["with_origin_country"] = "KR"
+
+        logger.info(f"{platform_name}：通过 TMDB discover 拉取最新剧集 {params}")
+        try:
+            infos = TmdbApi().discover_tvs(params) or []
+        except Exception as err:
+            logger.error(f"拉取{platform_name}最新剧集失败：{err}")
+            return []
+
+        medias: List[Any] = []
+        for info in infos:
+            if len(medias) >= page_cnt:
+                break
+            tmdb_id = info.get("id")
+            name = info.get("name") or info.get("original_name")
+            if not tmdb_id or not name:
+                continue
+            air_date = (info.get("first_air_date") or "").strip()
+            year = air_date[:4] if len(air_date) >= 4 else None
+            item = MediaInfo(
+                type="电视剧",
+                title=name,
+                year=year,
+                media_source=MediaSource("themoviedb"),
+                media_id=str(tmdb_id),
+                tmdb_id=int(tmdb_id),
+                first_air_date=air_date or None,
+                poster_path=info.get("poster_path"),
+                overview=info.get("overview"),
+                vote_average=info.get("vote_average"),
+                original_language=info.get("original_language"),
+            )
+            # SDK 版 MediaInfo 没有 title_year 字段，补一个属性用于日志展示
+            try:
+                item.title_year = f"{name} ({year})" if year else name
+            except Exception:
+                pass
+            medias.append(item)
+        logger.info(f"{platform_name}：拉取到 {len(medias)} 条最新剧集")
+        return medias
+
     def __do_platform_subscribe(self, platform: str, page_cnt: int):
         """
         执行单个视频平台的最新电视剧订阅（调用方须持有 _history_lock）。
@@ -685,7 +800,11 @@ class PopularSubscribe(_PluginBase):
 
             # --- 过滤一：短剧/未收录（要求能识别到 TMDB 条目） ---
             sub_media = media
-            if self._platform_require_tmdb:
+            # TMDB 数据源（Netflix / 韩剧）本身就带 TMDB 身份，无需再次识别
+            already_tmdb = (
+                getattr(getattr(media, "media_source", None), "value", None) == "themoviedb"
+            )
+            if self._platform_require_tmdb and not already_tmdb:
                 try:
                     recognized = self.chain.recognize_media(meta=meta, mtype=MediaType.TV)
                 except Exception as err:
@@ -1110,6 +1229,16 @@ class PopularSubscribe(_PluginBase):
                         cron_key="mangguo_cron", cron_label="芒果订阅周期",
                         page_key="mangguo_page_cnt", page_label="芒果获取条数",
                     ),
+                    self.__form_row_for_platform(
+                        enabled_key="netflix_enabled", enabled_label="Netflix新剧（TMDB）",
+                        cron_key="netflix_cron", cron_label="Netflix订阅周期",
+                        page_key="netflix_page_cnt", page_label="Netflix获取条数",
+                    ),
+                    self.__form_row_for_platform(
+                        enabled_key="korean_enabled", enabled_label="韩剧新剧（TMDB）",
+                        cron_key="korean_cron", cron_label="韩剧订阅周期",
+                        page_key="korean_page_cnt", page_label="韩剧获取条数",
+                    ),
                     {
                         "component": "VRow",
                         "content": [
@@ -1288,6 +1417,12 @@ class PopularSubscribe(_PluginBase):
             "iqiyi_page_cnt": 10,
             "tencent_page_cnt": 10,
             "mangguo_page_cnt": 10,
+            "netflix_enabled": False,
+            "korean_enabled": False,
+            "netflix_cron": "0 3 * * *",
+            "korean_cron": "10 3 * * *",
+            "netflix_page_cnt": 20,
+            "korean_page_cnt": 20,
             "platform_recent_only": True,
             "platform_require_tmdb": True,
         }
