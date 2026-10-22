@@ -35,7 +35,7 @@ class PopularSubscribe(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/thsrite/MoviePilot-Plugins/main/icons/popular.png"
     # 插件版本
-    plugin_version = "3.3.0"
+    plugin_version = "3.3.1"
     # 插件作者
     plugin_author = "thsrite"
     # 作者主页
@@ -114,6 +114,9 @@ class PopularSubscribe(_PluginBase):
     _TMDB_WESTERN_COUNTRIES = "US|GB|CA|AU|NZ|IE"
     # Netflix 在 TMDB 的网络 ID
     _TMDB_NETFLIX_NETWORK = "213"
+    # TMDB 热度门槛：评分人数 / 平均分（低于门槛视为冷门条，不订阅）
+    _TMDB_MIN_VOTES = "5"
+    _TMDB_MIN_RATING = "6.0"
     # 平台开关（爱奇艺 / 腾讯视频 / 芒果TV）
     _iqiyi_enabled: bool = False
     _tencent_enabled: bool = False
@@ -725,11 +728,15 @@ class PopularSubscribe(_PluginBase):
             return []
 
         params: Dict[str, Any] = {
-            "sort_by": "first_air_date.desc",
+            # 按热度排序（而不是首播日期），避免订阅到无人问津的冷门条
+            "sort_by": "popularity.desc",
             "page": 1,
             "include_adult": "false",
             # 排除真人秀 / 脱口秀 / 新闻，避免订阅到综艺
             "without_genres": "10764,10767,10763",
+            # 热度门槛：评分人数不足的直接跳过（新剧刚上线时票数少，门槛不宜过高）
+            "vote_count.gte": self._TMDB_MIN_VOTES,
+            "vote_average.gte": self._TMDB_MIN_RATING,
         }
         if self._recent_since:
             params["first_air_date.gte"] = self._recent_since.strftime("%Y-%m-%d")
